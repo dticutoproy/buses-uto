@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sistema de Transporte - UTO</title>
+    <link rel="icon" href="img/Detic_logo.webp" type="image/webp" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
+    />
+    <style>
+      :root {
+        --brand:       #033f86;
+        --brand-dark:  #022d61;
+        --brand-light: #1a5fad;
+        --morning:     #f59e0b;
+        --midday:      #0ea5e9;
+        --evening:     #7c3aed;
+        --surface:     #f0f4fa;
+        --text:        #0f172a;
+        --muted:       #64748b;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: "Segoe UI", sans-serif;
+        background: var(--surface);
+        overflow-x: hidden;
+      }
+
+      /* ── LAYOUT ── */
+      body { display: flex; flex-direction: column; height: 100vh; }
+
+      #map {
+        position: fixed;
+        top: 60px;
+        left: 280px;
+        right: 0;
+        bottom: 0;
+        filter: saturate(0.85) brightness(0.97);
+      }
+
+      .leaflet-top { top: 36px !important; }
+
+      /* ── TOP BAR ── */
+      .top-bar {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%;
+        height: 60px;
+        padding: 0 14px;
+        background: var(--brand);
+        box-shadow: 0 2px 12px rgba(3,63,134,0.35);
+        z-index: 1001;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        will-change: transform;
+      }
+
+      .top-bar-logo {
+        height: 36px;
+        width: auto;
+        border-radius: 5px;
+        flex-shrink: 0;
+        opacity: 0.95;
+      }
+
+      /* botón solo visible en móvil */
+      .menu-toggle {
+        background: rgba(255,255,255,0.15);
+        color: white;
+        border: 1px solid rgba(255,255,255,0.25);
+        width: 38px;
+        height: 38px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: background 0.2s;
+      }
+      .menu-toggle:hover { background: rgba(255,255,255,0.25); }
+
+      .search-box {
+        flex: 1;
+        max-width: 480px;
+        display: flex;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .search-wrapper {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .search-box input {
+        width: 100%;
+        padding: 9px 14px;
+        background: rgba(255,255,255,0.15);
+        border: 1px solid rgba(255,255,255,0.3);
+        border-radius: 8px;
+        font-size: 14px;
+        color: white;
+        outline: none;
+        transition: background 0.2s, border 0.2s;
+      }
+      .search-box input::placeholder { color: rgba(255,255,255,0.6); }
+      .search-box input:focus {
+        background: rgba(255,255,255,0.22);
+        border-color: rgba(255,255,255,0.55);
+      }
+
+      .search-box button {
+        padding: 9px 14px;
+        background: rgba(255,255,255,0.18);
+        color: white;
+        border: 1px solid rgba(255,255,255,0.3);
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 13px;
+        white-space: nowrap;
+        transition: background 0.2s;
+      }
+      .search-box button:hover { background: rgba(255,255,255,0.28); }
+
+      /* ── AUTOCOMPLETE ── */
+      #autocompleteList {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0; right: 0;
+        background: white;
+        border: 1px solid #dde3ed;
+        border-radius: 8px;
+        box-shadow: 0 6px 20px rgba(3,63,134,0.15);
+        z-index: 1100;
+        max-height: 200px;
+        overflow-y: auto;
+        display: none;
+      }
+      #autocompleteList div {
+        padding: 9px 14px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--text);
+        border-bottom: 1px solid #f1f5f9;
+      }
+      #autocompleteList div:last-child { border-bottom: none; }
+      #autocompleteList div:hover,
+      #autocompleteList div.highlighted { background: var(--surface); color: var(--brand); }
+
+      /* ── SIDE PANEL ── */
+      .side-panel {
+        position: fixed;
+        top: 60px;
+        left: 0;
+        width: 280px;
+        height: calc(100vh - 60px);
+        background: white;
+        border-right: 1px solid #e2e8f0;
+        box-shadow: 2px 0 16px rgba(3,63,134,0.08);
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: transform 0.3s ease;
+      }
+
+      .side-panel.collapsed { transform: translateX(-280px); }
+
+      .panel-header {
+        background: var(--brand);
+        padding: 14px 16px 12px;
+        flex-shrink: 0;
+      }
+
+      .panel-header h2 {
+        margin: 0 0 2px;
+        color: white;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        opacity: 0.8;
+      }
+
+      .panel-selection-summary {
+        font-size: 12px;
+        color: rgba(255,255,255,0.7);
+        min-height: 16px;
+        transition: color 0.2s;
+      }
+
+      .panel-selection-summary.has-selection {
+        color: #93c5fd;
+        font-weight: 600;
+      }
+
+      .panel-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .panel-body::-webkit-scrollbar { width: 5px; }
+      .panel-body::-webkit-scrollbar-track { background: transparent; }
+      .panel-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+      /* ── SELECTOR SECTION ── */
+      .selector-section { display: flex; flex-direction: column; gap: 8px; }
+
+      .selector-label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        padding: 0 2px;
+      }
+
+      /* Route pills */
+      .route-pills {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 7px;
+      }
+
+      .route-pill {
+        padding: 10px 8px;
+        border-radius: 10px;
+        border: 2px solid transparent;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 700;
+        text-align: center;
+        transition: all 0.18s;
+        color: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        line-height: 1.2;
+      }
+
+      .route-pill .pill-icon { font-size: 18px; }
+      .route-pill .pill-label { font-size: 11px; font-weight: 600; opacity: 0.9; }
+
+      .route-pill.r1  { background: #d97706; }
+      .route-pill.r2  { background: #7c3aed; }
+      .route-pill.r3  { background: #16a34a; }
+      .route-pill.all { background: var(--brand); grid-column: span 2; flex-direction: row; justify-content: center; gap: 8px; padding: 9px; }
+
+      .route-pill:hover { opacity: 0.85; transform: translateY(-1px); }
+      .route-pill.selected {
+        border-color: white;
+        box-shadow: 0 0 0 3px rgba(0,0,0,0.15);
+        transform: translateY(-1px);
+      }
+
+      /* Period pills */
+      .period-pills {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .period-pill {
+        padding: 10px 14px;
+        border-radius: 9px;
+        border: 1.5px solid #e2e8f0;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+        background: var(--surface);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: all 0.18s;
+      }
+
+      .period-pill:hover { border-color: var(--brand); background: #eef3fb; }
+
+      .period-pill.selected {
+        background: var(--brand);
+        color: white;
+        border-color: var(--brand);
+      }
+
+      .period-pill .period-time {
+        margin-left: auto;
+        font-size: 11px;
+        opacity: 0.65;
+        font-weight: 500;
+      }
+
+      .period-pill.selected .period-time { opacity: 0.8; }
+
+      /* Period section animada */
+      .period-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        overflow: hidden;
+        max-height: 0;
+        opacity: 0;
+        transition: max-height 0.3s ease, opacity 0.25s ease;
+      }
+
+      .period-section.visible {
+        max-height: 300px;
+        opacity: 1;
+      }
+
+      /* ── DIVIDER ── */
+      .panel-divider {
+        height: 1px;
+        background: #e2e8f0;
+        margin: 0 -14px;
+      }
+
+      /* ── ACTIVE ROUTE CHIP ── */
+      .active-chip {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        background: var(--surface);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 12px;
+        color: var(--text);
+        border: 1px solid #e2e8f0;
+      }
+
+      .active-chip.visible { display: flex; }
+
+      .active-chip-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .active-chip-text { flex: 1; font-weight: 600; }
+
+      .active-chip-clear {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1;
+        padding: 0;
+        transition: color 0.15s;
+      }
+      .active-chip-clear:hover { color: #ef4444; }
+
+      /* ── COLLAPSE TOGGLE ── */
+      .panel-collapse-btn {
+        position: fixed;
+        top: 50%;
+        left: 280px;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 48px;
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-left: none;
+        border-radius: 0 8px 8px 0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1001;
+        box-shadow: 2px 0 8px rgba(3,63,134,0.1);
+        transition: left 0.3s ease, background 0.2s;
+        color: var(--muted);
+      }
+      .panel-collapse-btn:hover { background: var(--surface); color: var(--brand); }
+      .panel-collapse-btn.collapsed { left: 0; }
+      .panel-collapse-btn svg { transition: transform 0.3s; }
+      .panel-collapse-btn.collapsed svg { transform: rotate(180deg); }
+
+      /* ── LEGEND ── */
+      .legend-panel {
+        position: fixed;
+        bottom: 14px;
+        right: 14px;
+        background: white;
+        border-radius: 14px;
+        box-shadow: 0 6px 24px rgba(3,63,134,0.15);
+        z-index: 1000;
+        width: 252px;
+        display: none;
+        max-height: 420px;
+        overflow: hidden;
+        flex-direction: column;
+        border-top: 3px solid var(--brand);
+      }
+      .legend-panel.visible { display: flex; }
+
+      .legend-header-bar {
+        background: var(--brand);
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .legend-header-bar h3 {
+        margin: 0;
+        color: white;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        flex: 1;
+      }
+      .legend-close-btn {
+        background: none;
+        border: none;
+        color: rgba(255,255,255,0.75);
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0;
+        flex-shrink: 0;
+        transition: color 0.15s;
+      }
+      .legend-close-btn:hover { color: white; }
+
+      .legend-body {
+        overflow-y: auto;
+        padding: 10px 12px;
+        flex: 1;
+      }
+      .legend-body::-webkit-scrollbar { width: 6px; }
+      .legend-body::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 3px; }
+      .legend-body::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
+
+      .legend-item {
+        display: flex;
+        flex-direction: column;
+        margin: 8px 0;
+        padding: 10px 11px;
+        background: var(--surface);
+        border-radius: 8px;
+        border-left: 4px solid #cbd5e1;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+      }
+      .legend-item-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 7px;
+        gap: 8px;
+      }
+      .legend-color {
+        width: 36px;
+        height: 5px;
+        border-radius: 3px;
+        flex-shrink: 0;
+      }
+      .legend-name { font-weight: 700; font-size: 13px; color: var(--text); }
+      .legend-details { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+      .legend-row { display: flex; align-items: center; gap: 5px; }
+
+      /* ── SEARCH MESSAGE ── */
+      .search-message {
+        position: fixed;
+        top: 68px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: white;
+        padding: 10px 18px;
+        border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(3,63,134,0.15);
+        z-index: 1002;
+        display: none;
+        font-size: 13px;
+        font-weight: 600;
+        border-left: 4px solid var(--brand);
+        max-width: calc(100% - 32px);
+        color: var(--text);
+        overflow: hidden;
+      text-overflow: ellipsis;
+      }
+
+      /* ── RESET BUTTON ── */
+      #resetBtn {
+        position: fixed;
+        bottom: 14px;
+        left: 294px;
+        z-index: 1000;
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        border: none;
+        background: var(--brand);
+        box-shadow: 0 3px 10px rgba(3,63,134,0.35);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s, transform 0.15s, left 0.3s;
+        padding: 0;
+      }
+      #resetBtn:hover { background: var(--brand-light); transform: scale(1.07); }
+      #resetBtn svg { display: block; }
+      #resetBtn.panel-collapsed { left: 14px; }
+
+      /* ── FACULTY MARKER ── */
+      .facultad-marker { background: transparent !important; }
+      .logo-overlay { display: none; }
+
+      /* ── WELCOME MODAL ── */
+      .welcome-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(3,63,134,0.55);
+        z-index: 2000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+      }
+      .welcome-modal {
+        background: white;
+        border-radius: 16px;
+        padding: 28px 24px 24px;
+        max-width: 480px;
+        width: 100%;
+        box-shadow: 0 20px 60px rgba(3,63,134,0.25);
+        max-height: 90vh;
+        overflow-y: auto;
+      }
+      .modal-logo {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .modal-logo img {
+        height: 44px;
+        width: auto;
+        border-radius: 8px;
+      }
+      .modal-logo h2 {
+        margin: 0;
+        font-size: 18px;
+        color: var(--brand);
+        font-weight: 700;
+        line-height: 1.3;
+      }
+      .welcome-modal p {
+        font-size: 14px;
+        color: var(--muted);
+        margin: 0 0 16px;
+        line-height: 1.6;
+      }
+      .features {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      .feature-item {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        font-size: 13px;
+        color: var(--text);
+        line-height: 1.5;
+      }
+      .feature-item .icon { font-size: 18px; flex-shrink: 0; }
+      .btn-start {
+        width: 100%;
+        padding: 13px;
+        background: var(--brand);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .btn-start:hover { background: var(--brand-light); }
+
+      /* ── MOBILE ── */
+      @media (max-width: 640px) {
+
+        /* Mapa ocupa toda la pantalla */
+        #map {
+          left: 0;
+          top: 52px;
+          bottom: 68px; /* solo fila de rutas visible por defecto */
+        }
+        #map.periods-visible {
+          bottom: 122px; /* fila rutas + fila turnos */
+        }
+
+        /* Top bar más compacta */
+        .top-bar { height: 52px; padding: 0 10px; gap: 8px; }
+        .top-bar-logo { height: 30px; }
+        .leaflet-top { top: 28px !important; }
+
+        /* Ocultar panel lateral y su botón */
+        .side-panel { display: none !important; }
+        .panel-collapse-btn { display: none !important; }
+
+        /* Ocultar búsqueda desktop, mostrar botón lupa */
+        .search-box { display: none; }
+        .search-box.mobile-open {
+          display: flex;
+          position: fixed;
+          top: 52px; left: 0; right: 0;
+          z-index: 1050;
+          background: var(--brand);
+          padding: 8px 10px;
+          max-width: 100%;
+        }
+        .search-box.mobile-open input { background: white; color: var(--text); border-color: white; }
+        .search-box.mobile-open input::placeholder { color: var(--muted); }
+        .search-box.mobile-open button { background: var(--brand-dark); border-color: var(--brand-dark); }
+        .mobile-search-btn { display: flex !important; }
+
+        /* Reset btn oculto en móvil (integrado en barra) */
+        #resetBtn { display: none !important; }
+
+        /* Leyenda como drawer */
+        .legend-panel {
+          width: 100%;
+          right: 0;
+          bottom: 68px;
+          border-radius: 14px 14px 0 0;
+          max-height: 55vh;
+          transform: translateY(100%);
+          transition: transform 0.3s ease;
+          display: flex !important;
+          visibility: hidden;
+        }
+        .legend-panel.visible {
+          transform: translateY(0);
+          visibility: visible;
+        }
+
+        /* ── BARRA INFERIOR ── */
+        .mobile-bottom-bar {
+          display: flex;
+          flex-direction: column;
+          position: fixed;
+          bottom: 0; left: 0; right: 0;
+          background: white;
+          border-top: 1px solid #e2e8f0;
+          box-shadow: 0 -4px 20px rgba(3,63,134,0.12);
+          z-index: 1000;
+          padding: 8px 10px;
+          padding-bottom: max(8px, env(safe-area-inset-bottom));
+          gap: 6px;
+        }
+
+        .mobile-bar-row {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+        }
+
+        /* Fila 1: rutas */
+        .mob-route-btn {
+          flex: 1;
+          padding: 9px 4px;
+          border-radius: 10px;
+          border: 2px solid transparent;
+          color: white;
+          font-weight: 700;
+          font-size: 12px;
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
+          transition: all 0.15s;
+          line-height: 1.2;
+          min-height: 44px;
+        }
+        .mob-route-btn .mob-icon { font-size: 16px; }
+        .mob-route-btn.r1  { background: #d97706; }
+        .mob-route-btn.r2  { background: #7c3aed; }
+        .mob-route-btn.r3  { background: #16a34a; }
+        .mob-route-btn.all { background: var(--brand); }
+        .mob-route-btn.selected {
+          border-color: rgba(0,0,0,0.3);
+          box-shadow: 0 0 0 3px rgba(0,0,0,0.12);
+          transform: translateY(-2px);
+        }
+
+        /* Fila 2: turnos + acciones */
+        .mob-period-btn {
+          flex: 1;
+          padding: 8px 4px;
+          border-radius: 9px;
+          border: 1.5px solid #e2e8f0;
+          background: var(--surface);
+          color: var(--text);
+          font-size: 11px;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
+          transition: all 0.15s;
+          min-height: 44px;
+        }
+        .mob-period-btn .mob-icon { font-size: 15px; }
+        .mob-period-btn.selected {
+          background: var(--brand);
+          color: white;
+          border-color: var(--brand);
+        }
+
+        /* Botones de acción en fila 2 */
+        .mob-action-btn {
+          width: 44px;
+          height: 44px;
+          border-radius: 10px;
+          border: none;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          transition: all 0.15s;
+        }
+        .mob-action-btn.reset { background: var(--brand); }
+        .mob-action-btn.legend-toggle { background: #0f172a; }
+        .mob-action-btn:active { transform: scale(0.93); }
+
+        /* Fila 2 oculta hasta elegir ruta */
+        .mobile-bar-row.period-row {
+          max-height: 0;
+          overflow: hidden;
+          opacity: 0;
+          transition: max-height 0.25s ease, opacity 0.2s ease;
+          padding: 0;
+          gap: 0;
+        }
+        .mobile-bar-row.period-row.visible {
+          max-height: 60px;
+          opacity: 1;
+          gap: 6px;
+        }
+
+        /* Autocomplete en móvil */
+        #autocompleteList { border-radius: 8px; }
+
+        /* Search message */
+        .search-message { top: 60px; font-size: 12px; padding: 8px 14px; }
+
+        /* Welcome modal en móvil */
+        .welcome-modal {
+          padding: 20px 16px 16px;
+          border-radius: 12px;
+        }
+        .modal-logo h2 { font-size: 15px; }
+        .welcome-modal p { font-size: 13px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="top-bar">
+      <!-- botón lupa solo en móvil -->
+      <button class="mobile-search-btn" id="mobileSearchBtn" aria-label="Buscar" style="display:none;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);width:38px;height:38px;border-radius:8px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0;color:white;" onclick="toggleMobileSearch()">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+          <circle cx="8.5" cy="8.5" r="5.5" stroke="white" stroke-width="2"/>
+          <path d="M13 13l4 4" stroke="white" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <img src="img/Detic_logo.webp" alt="Logo UTO" class="top-bar-logo" />
+      <div class="search-box" id="searchBox">
+        <div class="search-wrapper">
+          <input type="text" id="searchStreet" placeholder="Buscar calle en todas las rutas..." autocomplete="off" />
+          <div id="autocompleteList"></div>
+        </div>
+        <button onclick="searchStreet()">
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none" style="display:inline;vertical-align:middle;margin-right:4px">
+            <circle cx="8.5" cy="8.5" r="5.5" stroke="white" stroke-width="2"/>
+            <path d="M13 13l4 4" stroke="white" stroke-width="2" stroke-linecap="round"/>
+          </svg>Buscar
+        </button>
+      </div>
+    </div>
+
+    <!-- Panel lateral -->
+    <aside class="side-panel" id="sidePanel">
+      <div class="panel-header">
+        <h2>Rutas de Transporte</h2>
+        <div class="panel-selection-summary" id="selectionSummary">Selecciona una ruta para comenzar</div>
+      </div>
+
+      <div class="panel-body">
+
+        <!-- Chip de selección activa -->
+        <div class="active-chip" id="activeChip">
+          <div class="active-chip-dot" id="activeChipDot"></div>
+          <span class="active-chip-text" id="activeChipText"></span>
+          <button class="active-chip-clear" onclick="resetMap()" title="Limpiar">×</button>
+        </div>
+
+        <!-- Nivel 1: Ruta -->
+        <div class="selector-section">
+          <div class="selector-label">1 — Selecciona la ruta</div>
+          <div class="route-pills">
+            <button class="route-pill r1" data-route="route1" onclick="selectRoute('route1')">
+              <span class="pill-icon">🚌</span>
+              <span>Ruta 1</span>
+              <span class="pill-label">Amarillo</span>
+            </button>
+            <button class="route-pill r2" data-route="route2" onclick="selectRoute('route2')">
+              <span class="pill-icon">🚌</span>
+              <span>Ruta 2</span>
+              <span class="pill-label">Violeta</span>
+            </button>
+            <button class="route-pill r3" data-route="route3" onclick="selectRoute('route3')">
+              <span class="pill-icon">🚌</span>
+              <span>Ruta 3</span>
+              <span class="pill-label">Verde</span>
+            </button>
+            <button class="route-pill all" data-route="both" onclick="selectRoute('both')">
+              <span class="pill-icon">🗺️</span>
+              <span>Todas las rutas</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="panel-divider"></div>
+
+        <!-- Nivel 2: Turno -->
+        <div class="selector-section period-section" id="periodSection">
+          <div class="selector-label">2 — Selecciona el turno</div>
+          <div class="period-pills">
+            <button class="period-pill" data-period="morning" onclick="selectPeriod('morning')">
+              <span>☀️</span>
+              <span>Mañana</span>
+              <span class="period-time">7:00 – 9:00</span>
+            </button>
+            <button class="period-pill" data-period="midday" onclick="selectPeriod('midday')">
+              <span>🌤️</span>
+              <span>Mediodía</span>
+              <span class="period-time">12:00 – 14:30</span>
+            </button>
+            <button class="period-pill" data-period="evening" onclick="selectPeriod('evening')">
+              <span>🌙</span>
+              <span>Tarde</span>
+              <span class="period-time">18:00 – 19:15</span>
+            </button>
+            <button class="period-pill" data-period="all" onclick="selectPeriod('all')">
+              <span>📅</span>
+              <span>Todo el día</span>
+              <span class="period-time">Todos los turnos</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- Botón colapsar panel -->
+    <button class="panel-collapse-btn" id="collapseBtn" onclick="togglePanel()" title="Colapsar panel">
+      <svg width="10" height="16" viewBox="0 0 10 16" fill="none">
+        <path d="M7 2L2 8l5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+
+    <div id="map"></div>
+
+    <button id="resetBtn" onclick="resetMap()" title="Volver al turno actual">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M12 4V1L8 5l4 4V6a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z" fill="white"/>
+      </svg>
+    </button>
+
+    <div class="search-message" id="searchMessage"></div>
+
+    <div class="legend-panel" id="legendPanel">
+      <div class="legend-header-bar">
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+          <circle cx="10" cy="10" r="4" fill="white"/>
+          <circle cx="10" cy="10" r="8" stroke="white" stroke-width="2"/>
+        </svg>
+        <h3>Rutas Activas</h3>
+        <button class="legend-close-btn" onclick="document.getElementById('legendPanel').classList.remove('visible')" title="Cerrar">&times;</button>
+      </div>
+      <div class="legend-body" id="legendContent"></div>
+    </div>
+
+    <div class="logo-overlay">
+      <img src="img/Detic_logo.webp" alt="Logo UTO" />
+    </div>
+
+    <!-- Modal de bienvenida -->
+    <div class="welcome-overlay" id="welcomeOverlay" onclick="closeWelcome(event)">
+      <div class="welcome-modal">
+        <div class="modal-logo">
+          <img src="img/Detic_logo.webp" alt="Logo UTO" />
+          <h2>Sistema de Transporte UTO</h2>
+        </div>
+        <p>Bienvenido al mapa interactivo de rutas de transporte universitario. Aquí puedes consultar las rutas de buses disponibles según el turno del día.</p>
+        <div class="features">
+          <div class="feature-item">
+            <span class="icon">🗺️</span>
+            <div><strong>Ver rutas en el mapa</strong> — Selecciona el turno (Mañana, Mediodía o Tarde) y la ruta que deseas visualizar.</div>
+          </div>
+          <div class="feature-item">
+            <span class="icon">🔍</span>
+            <div><strong>Buscar por calles</strong> — Escribe el nombre de una calle para encontrar qué rutas pasan por ahí.</div>
+          </div>
+          <div class="feature-item">
+            <span class="icon">🎓</span>
+            <div><strong>Facultades marcadas</strong> — Las ubicaciones de las facultades están señaladas directamente en el mapa.</div>
+          </div>
+          <div class="feature-item">
+            <span class="icon">📋</span>
+            <div><strong>Detalle de rutas</strong> — Al seleccionar una ruta verás horario, parada de salida y llegada en el panel lateral.</div>
+          </div>
+        </div>
+        <button class="btn-start" onclick="closeWelcome()">
+          Entrar al mapa →
+        </button>
+      </div>
+    </div>
+
+    <!-- Barra inferior móvil -->
+    <div class="mobile-bottom-bar" id="mobileBottomBar">
+      <!-- Fila 1: rutas -->
+      <div class="mobile-bar-row">
+        <button class="mob-route-btn r1" data-route="route1" onclick="selectRoute('route1')">
+          <span class="mob-icon">🚌</span><span>Ruta 1</span>
+        </button>
+        <button class="mob-route-btn r2" data-route="route2" onclick="selectRoute('route2')">
+          <span class="mob-icon">🚌</span><span>Ruta 2</span>
+        </button>
+        <button class="mob-route-btn r3" data-route="route3" onclick="selectRoute('route3')">
+          <span class="mob-icon">🚌</span><span>Ruta 3</span>
+        </button>
+        <button class="mob-route-btn all" data-route="both" onclick="selectRoute('both')">
+          <span class="mob-icon">🗺️</span><span>Todas</span>
+        </button>
+      </div>
+      <!-- Fila 2: turnos + acciones -->
+      <div class="mobile-bar-row period-row" id="mobilePeriodRow">
+        <button class="mob-period-btn" data-period="morning" onclick="selectPeriod('morning')">
+          <span class="mob-icon">☀️</span><span>Mañana</span>
+        </button>
+        <button class="mob-period-btn" data-period="midday" onclick="selectPeriod('midday')">
+          <span class="mob-icon">🌤️</span><span>Mediodía</span>
+        </button>
+        <button class="mob-period-btn" data-period="evening" onclick="selectPeriod('evening')">
+          <span class="mob-icon">🌙</span><span>Tarde</span>
+        </button>
+        <button class="mob-period-btn" data-period="all" onclick="selectPeriod('all')">
+          <span class="mob-icon">📅</span><span>Todo</span>
+        </button>
+        <button class="mob-action-btn reset" onclick="resetMap()" title="Reiniciar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M12 4V1L8 5l4 4V6a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z" fill="white"/>
+          </svg>
+        </button>
+        <button class="mob-action-btn legend-toggle" onclick="toggleMobileLegend()" title="Ver detalle">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="5" width="18" height="2" rx="1" fill="white"/>
+            <rect x="3" y="11" width="12" height="2" rx="1" fill="white"/>
+            <rect x="3" y="17" width="15" height="2" rx="1" fill="white"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script src="js/main.js"></script>
+  </body>
+</html>
