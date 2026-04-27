@@ -228,7 +228,7 @@ function updateActiveChip() {
 }
 
 document.getElementById("searchStreet")?.addEventListener("keypress", (e) => {
-  if (e.key === "Enter") { closeAutocomplete(); searchStreet(); }
+  if (e.key === "Enter") { closeAutocomplete(); searchStreet(); e.target.blur(); }
 });
 
 // ── Autocompletado ──
@@ -513,7 +513,10 @@ function updateLegend(routes) {
     legendContent.appendChild(item);
   });
 
-  document.getElementById("legendPanel").classList.add("visible");
+  // En desktop siempre mostrar; en móvil solo mostrar si ya estaba visible (el usuario la abrió)
+  if (!isMobile()) {
+    document.getElementById("legendPanel").classList.add("visible");
+  }
 }
 
 function searchStreet() {
@@ -521,6 +524,8 @@ function searchStreet() {
     .getElementById("searchStreet")
     .value.trim()
     .toLowerCase();
+  // Cerrar teclado virtual en móvil
+  if (searchInput) searchInput.blur();
   if (!searchTerm) {
     showMessage("⚠️ Por favor ingresa una calle para buscar.");
     return;
