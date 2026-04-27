@@ -166,34 +166,40 @@ function selectPeriod(period) {
   if (selectedRoute) triggerShowRoutes();
 }
 
+// ── Spinner de carga ──
+function showLoading() { document.getElementById("loadingOverlay").classList.add("visible"); }
+function hideLoading() { document.getElementById("loadingOverlay").classList.remove("visible"); }
+
 // ── Disparar showRoutes con la selección actual ──
 async function triggerShowRoutes() {
   if (!selectedRoute || !selectedPeriod) return;
-
-  if (selectedPeriod === "all") {
-    // Cargar los 3 turnos
-    clearMap();
-    const periods = ["morning", "midday", "evening"];
-    let allRoutes = [];
-    for (const p of periods) {
-      try {
-        const data = await fetchRouteData(p);
-        const sources = selectedRoute === "both"
-          ? [...(data.route1||[]), ...(data.route2||[]), ...(data.route3||[])]
-          : (data[selectedRoute] || []);
-        allRoutes.push(...sources);
-      } catch(e) { console.error(e); }
+  showLoading();
+  try {
+    if (selectedPeriod === "all") {
+      clearMap();
+      const periods = ["morning", "midday", "evening"];
+      let allRoutes = [];
+      for (const p of periods) {
+        try {
+          const data = await fetchRouteData(p);
+          const sources = selectedRoute === "both"
+            ? [...(data.route1||[]), ...(data.route2||[]), ...(data.route3||[])]
+            : (data[selectedRoute] || []);
+          allRoutes.push(...sources);
+        } catch(e) { console.error(e); }
+      }
+      if (allRoutes.length === 0) { showMessage("⚠️ No hay rutas para esta selección."); return; }
+      currentRoutes = allRoutes;
+      allRoutes.forEach(r => drawRoute(r));
+      const pts = allRoutes.flatMap(r => normalizePoints(r.points));
+      if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [50, 50] });
+      updateLegend(allRoutes);
+    } else {
+      await showRoutes(selectedPeriod, selectedRoute);
     }
-    if (allRoutes.length === 0) { showMessage("⚠️ No hay rutas para esta selección."); return; }
-    currentRoutes = allRoutes;
-    allRoutes.forEach(r => drawRoute(r));
-    const pts = allRoutes.flatMap(r => normalizePoints(r.points));
-    if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [50, 50] });
-    updateLegend(allRoutes);
-  } else {
-    await showRoutes(selectedPeriod, selectedRoute);
+  } finally {
+    hideLoading();
   }
-
   updateActiveChip();
   updateSummary();
 }
@@ -424,19 +430,23 @@ function drawRoute(route) {
     opacity: 0.8,
   }).addTo(map);
 
+  const closeBtn = `<div style="text-align:right;margin-bottom:4px">
+    <button onclick="this.closest('.leaflet-popup').querySelector('.leaflet-popup-close-button').click()"
+      style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:#64748b;padding:0;min-width:32px;min-height:32px;">&times;</button>
+  </div>`;
+
   polyline.bindPopup(`
-        <div style="font-family: 'Segoe UI', sans-serif;">
-            <strong style="font-size: 15px;">${
-              route.name || "Ruta"
-            }</strong><br>
-            <span style="font-size: 12px; color: #64748b;">
-                ${route.direction || "Sin dirección"}<br>
-                ${route.schedule || "Sin horario"}<br>
-                <strong>Salida:</strong> ${route.start || "N/A"}<br>
-                <strong>Llegada:</strong> ${route.end || "N/A"}
-            </span>
-        </div>
-    `);
+    <div style="font-family:'Segoe UI',sans-serif;min-width:160px">
+      ${closeBtn}
+      <strong style="font-size:15px">${route.name || "Ruta"}</strong><br>
+      <span style="font-size:12px;color:#64748b">
+        ${route.direction || "Sin dirección"}<br>
+        ${route.schedule || "Sin horario"}<br>
+        <strong>Salida:</strong> ${route.start || "N/A"}<br>
+        <strong>Llegada:</strong> ${route.end || "N/A"}
+      </span>
+    </div>
+  `, { maxWidth: 220 });
 
   polylines.push(polyline);
 
